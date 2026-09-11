@@ -1,10 +1,10 @@
-'''
-import tkinter as tk
-from gui import AppGUI
-import database as db
+import sys
+from gui import SimulationModel
+from PySide6.QtWidgets import QApplication
 
 if __name__ == "__main__":
-    root = tk.Tk()
-    app = AppGUI(root)
-    root.mainloop()
-'''
+    app = QApplication(sys.argv)
+    window = SimulationModel()
+    window.show()
+
+    sys.exit(app.exec())

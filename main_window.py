@@ -32,7 +32,7 @@ class Ui_MainWindow(object):
         self.centralwidget.setObjectName(u"centralwidget")
         self.label_current_tick = QLabel(self.centralwidget)
         self.label_current_tick.setObjectName(u"label_current_tick")
-        self.label_current_tick.setGeometry(QRect(10, 10, 161, 31))
+        self.label_current_tick.setGeometry(QRect(10, 10, 250, 31))
         self.label_current_tick.setStyleSheet(u"color: #000000;\n"
 "font-weight: bold;\n"
 "font-size: 20px;")

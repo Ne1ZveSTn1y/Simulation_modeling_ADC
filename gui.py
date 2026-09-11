@@ -1,6 +1,5 @@
-import sys
 import algorithm
-from PySide6.QtWidgets import QApplication, QMainWindow, QPushButton
+from PySide6.QtWidgets import QMainWindow, QPushButton
 from main_window import Ui_MainWindow
 from typing import List
 
@@ -22,6 +21,8 @@ class SimulationModel(QMainWindow):
 
         # Привязка действий к кнопкам
         self.ui.btn_next_tick.clicked.connect(self.click_next_tick)
+        self.ui.btn_auto.clicked.connect(self.click_auto_mode)
+        self.ui.btn_jerk.clicked.connect(self.click_jerk)
 
     def generate_matrix(self, rows: int = 6, cols: int = 4):
         parent_field = self.ui.neurons_container
@@ -66,7 +67,6 @@ class SimulationModel(QMainWindow):
 
                 c_res = c + 1
             self.row_width.append(c_res)
-        print(self.row_width)
 
     def on_matrix_click(self, checked: bool, row: int, col: int, current_btn: QPushButton):
         print(f"Нажата кнопка: строка {row}, столбец {col}")
@@ -90,16 +90,21 @@ class SimulationModel(QMainWindow):
         self.ui.label_current_tick.setText(f"Current tick: {self.sController.current_tick}")
         self.update_name_btn()
 
+    def click_auto_mode(self):
+        self.sController.auto_mode()
+        self.ui.label_current_tick.setText(f"Current tick: {self.sController.current_tick}")
+        self.update_name_btn()
+
+    def click_jerk(self):
+        user_input = self.ui.tick_input_number.text().strip()
+        try:
+            self.sController.jerk(int(user_input))
+            self.ui.label_current_tick.setText(f"Current tick: {self.sController.current_tick}")
+            self.update_name_btn()
+        except ValueError:
+            print("Преобразование прошло неудачно")
+
     def update_name_btn(self):
         for r in range(len(self.btn_neurons_list)):
             for c in range(len(self.btn_neurons_list[r])):
                 self.btn_neurons_list[r][c].setText(self.current_architecture.topology[r][c].designation())
-
-
-
-if __name__ == "__main__":
-    app = QApplication(sys.argv)
-    window = SimulationModel()
-    window.show()
-
-    sys.exit(app.exec())

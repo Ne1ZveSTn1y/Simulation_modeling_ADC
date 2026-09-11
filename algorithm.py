@@ -35,11 +35,11 @@ class Neuron:
     def designation(self) -> str:
         return f"{self.current_application_id}|{self.required_neurons_count}|{self.remaining_processing_time}"
 
-    def take_app(self, app: Application):
+    def take_app(self, app: Application, row: int):
         self.current_application = app
         self.current_application_id = app.id
         self.required_neurons_count = app.required_neurons_count
-        self.remaining_processing_time = app.required_processing_time
+        self.remaining_processing_time = app.required_processing_time - row
 
         app.status = "processing"
         app.neurons_involved_count += 1
@@ -82,12 +82,6 @@ class BaseArchitecture(ABC):
             return check_column
         return 0
 
-    # def search_for_an_application(self):
-    #     for i in range(len(self.topology) - 1, -1, -1):
-    #         for j in range(len(self.topology[i])):
-    #             if self.topology[i][j].current_application is not None:
-    #                 self.taking_the_next_layer(self.topology[i][j].current_application, i, j)
-
 class MatrixArchitecture(BaseArchitecture):
     def generate_topology(self):
         self.topology = [[Neuron() for _ in range(self.row_width_list[0])] for _ in range(len(self.row_width_list))]
@@ -97,13 +91,13 @@ class MatrixArchitecture(BaseArchitecture):
             return True
 
         if self.topology[current_layer + 1][current_column].current_application is None:
-            self.topology[current_layer + 1][current_column].take_app(app)
+            self.topology[current_layer + 1][current_column].take_app(app, current_layer + 1)
             return True
         elif self.topology[current_layer + 1][current_column - 1].current_application is None:
-            self.topology[current_layer + 1][current_column - 1].take_app(app)
+            self.topology[current_layer + 1][current_column - 1].take_app(app, current_layer + 1)
             return True
         elif self.topology[current_layer + 1][self.check_max_column(current_layer, current_column + 1)].current_application is None:
-            self.topology[current_layer + 1][current_column - 1].take_app(app)
+            self.topology[current_layer + 1][current_column - 1].take_app(app, current_layer + 1)
             return True
         return False
 
@@ -111,6 +105,11 @@ class SimulationController:
     def __init__(self, architecture: BaseArchitecture, periods: List[List[int]] = None):
         self.current_tick = 0 # текущий такт моделирования
         self.current_architecture = architecture
+        self.max_count_app = 15 # максимальное количество генерируемых заявок
+        self.list_max_count_app = [self.max_count_app for _ in range(self.current_architecture.row_width_list[0])]
+        # список максимального количества генерируемых заявок для каждого входного нейрона
+        self.list_count_app = [0 for _ in range(self.current_architecture.row_width_list[0])]
+        # список количества сгенерированных уже заявок для каждого входного нейрона
 
         if periods is None:
             self.time_of_appearance = [[i + 1, 20] for i in range(self.current_architecture.row_width_list[0])]
@@ -130,16 +129,41 @@ class SimulationController:
                 if i[j].remaining_processing_time > 0:
                     i[j].remaining_processing_time -= 1
         self.search_for_an_application()
+        self.check_release_application()
         self.check_and_generate_applications()
+
+    def auto_mode(self):
+        while True:
+            self.next_tick()
+            if self.check_off_mode_auto():
+                break
+        print("Completed! Mode auto -> off")
+
+    def check_off_mode_auto(self) -> bool:
+        for i in range(len(self.current_architecture.topology[0])):
+            if self.list_count_app[i] != self.list_max_count_app[i]:
+                return False
+
+        for i in range(len(self.current_architecture.topology)):
+            for j in range(len(self.current_architecture.topology[i])):
+                if self.current_architecture.topology[i][j].remaining_processing_time != 0:
+                    return False
+        return True
+
+    def jerk(self, input_tick: int):
+        for _ in range(input_tick):
+            self.next_tick()
 
     def check_and_generate_applications(self):
         for i in range(len(self.time_of_appearance)):
-            if ((self.time_of_appearance[i][0] == self.current_tick) or
-                    ((self.current_tick - self.time_of_appearance[i][0]) % self.time_of_appearance[i][1] == 0)):
-                app = self.generate_applications()
-                app.index_input_neuron = i
-                self.applications_in_process.append(app)
-                self.current_architecture.topology[0][i].take_app(app)
+            if self.list_count_app[i] != self.list_max_count_app[i]:
+                if ((self.time_of_appearance[i][0] == self.current_tick) or
+                        ((self.current_tick - self.time_of_appearance[i][0]) % self.time_of_appearance[i][1] == 0)):
+                    app = self.generate_applications()
+                    app.index_input_neuron = i
+                    self.applications_in_process.append(app)
+                    self.current_architecture.topology[0][i].take_app(app, 0)
+                    self.list_count_app[i] += 1
 
     def generate_applications(self) -> Application:
         self.applications_count += 1
@@ -151,6 +175,12 @@ class SimulationController:
                 if self.current_architecture.topology[i][j].current_application is not None:
                      if not(self.current_architecture.taking_the_next_layer(self.current_architecture.topology[i][j].current_application, i, j)):
                          self.dropped_application(self.current_architecture.topology[i][j].current_application)
+
+    def check_release_application(self):
+        for i in range(len(self.current_architecture.topology[0])):
+            if ((self.current_architecture.topology[0][i].current_application is not None) and
+                    (self.current_architecture.topology[0][i].remaining_processing_time == 0)):
+                self.release_application(self.current_architecture.topology[0][i].current_application)
 
     def release_application(self, app: Application):
         app.status = "completed"
