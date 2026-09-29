@@ -1,5 +1,23 @@
-.idea/
+# Конфигурация
+.env
+
+# Виртуальное окружение
+venv/
 .venv/
+env/
+
+# Кэш python
 __pycache__/
 *.pyc
+*.pyo
+*.pyd
+
+# Настройки сред разработки
+.idea/
+
+# Системные файлы
+.DS-Strore
+Thumbs.db
 test.py
+*.csv
+Experiments result/

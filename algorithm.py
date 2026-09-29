@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from random import randint
+from random import randint, random
 from typing import List
 
 class Application:
@@ -78,7 +78,7 @@ class BaseArchitecture(ABC):
             print(res)
 
     def check_max_column(self, check_layer: int, check_column: int) -> int:
-        if check_column == (len(self.topology[check_layer]) - 1):
+        if check_column != (len(self.topology[check_layer])):
             return check_column
         return 0
 
@@ -90,14 +90,19 @@ class MatrixArchitecture(BaseArchitecture):
         if (app.neurons_involved_count == app.required_neurons_count) or (app.last_layer != current_layer):
             return True
 
-        if self.topology[current_layer + 1][current_column].current_application is None:
+        increment_column = self.check_max_column(current_layer, current_column + 1)
+
+        if ((self.topology[current_layer + 1][current_column].current_application is None) and
+                self.topology[current_layer + 1][current_column].is_working):
             self.topology[current_layer + 1][current_column].take_app(app, current_layer + 1)
             return True
-        elif self.topology[current_layer + 1][current_column - 1].current_application is None:
+        elif ((self.topology[current_layer + 1][current_column - 1].current_application is None) and
+              self.topology[current_layer + 1][current_column - 1].is_working):
             self.topology[current_layer + 1][current_column - 1].take_app(app, current_layer + 1)
             return True
-        elif self.topology[current_layer + 1][self.check_max_column(current_layer, current_column + 1)].current_application is None:
-            self.topology[current_layer + 1][current_column - 1].take_app(app, current_layer + 1)
+        elif ((self.topology[current_layer + 1][increment_column].current_application is None) and
+              self.topology[current_layer + 1][increment_column].is_working):
+            self.topology[current_layer + 1][increment_column].take_app(app, current_layer + 1)
             return True
         return False
 
@@ -106,14 +111,18 @@ class SimulationController:
         self.current_tick = 0 # текущий такт моделирования
         self.current_architecture = architecture
         self.max_count_app = 15 # максимальное количество генерируемых заявок
-        self.list_max_count_app = [self.max_count_app for _ in range(self.current_architecture.row_width_list[0])]
         # список максимального количества генерируемых заявок для каждого входного нейрона
-        self.list_count_app = [0 for _ in range(self.current_architecture.row_width_list[0])]
+        self.list_max_count_app = [self.max_count_app for _ in range(self.current_architecture.row_width_list[0])]
         # список количества сгенерированных уже заявок для каждого входного нейрона
+        self.list_count_app = [0 for _ in range(self.current_architecture.row_width_list[0])]
+
+        self.flag_rnd_breakdowns = False
+        self.probability_of_neuron_failure: float = 0.01
+        self.res_rnd_breakdowns: List[List[int]] = []
 
         if periods is None:
-            self.time_of_appearance = [[i + 1, 20] for i in range(self.current_architecture.row_width_list[0])]
             # [первый такт появления, период появления]
+            self.time_of_appearance = [[i + 1, 20] for i in range(self.current_architecture.row_width_list[0])]
         else:
             self.time_of_appearance = periods
 
@@ -122,8 +131,24 @@ class SimulationController:
         self.applications_dropped = [[] for _ in range(self.current_architecture.row_width_list[0])]  # заявки, получившие отказ
         self.applications_count = 0  # общее количество заявок
 
+    def output_of_information(self) -> list:
+        info_input_neuron = []
+        sum_dropped_application = 0
+        for i in range(self.current_architecture.row_width_list[0]):
+            sum_dropped_application += self.current_architecture.topology[0][i].dropped_applications_count
+            try:
+                info_input_neuron.append(round(self.current_architecture.topology[0][i].dropped_applications_count /
+                                         (self.current_architecture.topology[0][i].processed_applications_count +
+                                         self.current_architecture.topology[0][i].dropped_applications_count), 4))
+            except ZeroDivisionError:
+                info_input_neuron.append(0)
+        return [self.applications_count, round(sum_dropped_application / self.applications_count, 4), info_input_neuron]
+
     def next_tick(self):
+        # self.res_rnd_breakdowns.clear()
         self.current_tick += 1
+        # if self.flag_rnd_breakdowns:
+        #     self.res_rnd_breakdowns = self.rnd_breakdowns()
         for i in self.current_architecture.topology:
             for j in range(len(i)):
                 if i[j].remaining_processing_time > 0:
@@ -134,6 +159,8 @@ class SimulationController:
 
     def auto_mode(self):
         while True:
+            self.rnd_breakdowns(True)
+            # print(self.res_rnd_breakdowns)
             self.next_tick()
             if self.check_off_mode_auto():
                 break
@@ -141,7 +168,7 @@ class SimulationController:
 
     def check_off_mode_auto(self) -> bool:
         for i in range(len(self.current_architecture.topology[0])):
-            if self.list_count_app[i] != self.list_max_count_app[i]:
+            if (self.list_count_app[i] != self.list_max_count_app[i]) and self.current_architecture.topology[0][i].is_working:
                 return False
 
         for i in range(len(self.current_architecture.topology)):
@@ -151,14 +178,17 @@ class SimulationController:
         return True
 
     def jerk(self, input_tick: int):
+        self.res_rnd_breakdowns.clear()
         for _ in range(input_tick):
+            self.rnd_breakdowns(True)
             self.next_tick()
 
     def check_and_generate_applications(self):
         for i in range(len(self.time_of_appearance)):
             if self.list_count_app[i] != self.list_max_count_app[i]:
-                if ((self.time_of_appearance[i][0] == self.current_tick) or
-                        ((self.current_tick - self.time_of_appearance[i][0]) % self.time_of_appearance[i][1] == 0)):
+                if (((self.time_of_appearance[i][0] == self.current_tick) or
+                        ((self.current_tick - self.time_of_appearance[i][0]) % self.time_of_appearance[i][1] == 0)) and
+                        self.current_architecture.topology[0][i].is_working):
                     app = self.generate_applications()
                     app.index_input_neuron = i
                     self.applications_in_process.append(app)
@@ -201,6 +231,19 @@ class SimulationController:
                 if i[j].current_application == app:
                     i[j].set_liberation()
                     i[j].dropped_applications_count += 1
+
+    def rnd_breakdowns(self, flag: bool = False) -> list:
+        res = []
+        for r in range(len(self.current_architecture.row_width_list)):
+            for c in range(self.current_architecture.row_width_list[r]):
+                if (random() <= self.probability_of_neuron_failure) and self.current_architecture.topology[r][c].is_working:
+                    if flag:
+                        self.current_architecture.topology[r][c].is_working = False
+                        self.res_rnd_breakdowns.append([self.current_tick, r, c])
+                    res.append([self.current_tick, r, c])
+        return res
+
+
 
 
 if __name__ == "__main__":
